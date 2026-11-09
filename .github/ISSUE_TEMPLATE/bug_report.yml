@@ -1,0 +1,101 @@
+name: Bug report
+description: Report a benchmark run or measurement that doesn't work as documented
+labels: ["type:bug", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        **This issue is public.** Before submitting, remove account IDs, tokens,
+        email addresses, and other secrets from the description and logs.
+        Report security vulnerabilities privately through the link in the issue
+        chooser, not here. If the bug is in the platform itself (publishing,
+        domains, schemas), file it in the platform repository instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this? Include the make target you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: >
+        Which part of the benchmark harness does this concern? Issue forms can't
+        apply labels from a dropdown, so a maintainer applies the matching area
+        label and a priority during triage.
+      options:
+        - Driver (area:driver)
+        - Stack and Makefile (area:infra)
+        - CI (area:ci)
+        - Dependencies (area:deps)
+        - Documentation (area:docs)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit
+      description: >
+        The harness has no releases, so give the commit you ran
+        (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: input
+    id: region
+    attributes:
+      label: AWS Region
+      description: The Region the benchmark ran in, if it matters.
+      placeholder: ap-southeast-2
+    validations:
+      required: false
+  - type: input
+    id: profile
+    attributes:
+      label: Run profile
+      description: >
+        The invocation payload the run used (the Makefile's PAYLOAD value).
+        `{}` reproduces the issue #6 profile.
+      placeholder: '{"rate_per_sec": 200, "measure_secs": 60}'
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report excerpt
+      description: >
+        The publish, floor, and reconciliation sections of the JSON report,
+        with secrets removed.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Driver logs from CloudWatch (/aws/lambda/...), with secrets removed.
+      render: shell
+    validations:
+      required: false
