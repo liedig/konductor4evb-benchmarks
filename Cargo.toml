@@ -1,0 +1,46 @@
+[package]
+name = "publish-benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+aws-config = "1"
+aws-credential-types = "1"
+aws-smithy-types = "1"
+aws-smithy-runtime-api = "1"
+aws-sigv4 = { version = "1", features = ["sign-http"] }
+hex = "0.4"
+sha2 = "0.10"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+aws-sdk-dynamodb = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-eventbridge = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-cloudwatch = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-sqs = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+chrono = { version = "0.4", features = ["serde"] }
+lambda_runtime = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+trait-variant = "0.1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+aws-sdk-dynamodb = { version = "1", features = ["test-util"] }
+aws-sdk-eventbridge = { version = "1", features = ["test-util"] }
+aws-sdk-cloudwatch = { version = "1", features = ["test-util"] }
+aws-sdk-cloudwatchlogs = { version = "1", features = ["test-util"] }
+aws-sdk-sqs = { version = "1", features = ["test-util"] }
+aws-smithy-mocks = "0.3"
+tokio = { version = "1", features = ["test-util"] }
+
+[profile.release]
+lto = true
+codegen-units = 1

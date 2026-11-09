@@ -1,0 +1,17 @@
+# sam deploy configuration. The Makefile passes the core-stack-resolved
+# values as --parameter-overrides; only the stable knobs live here.
+version = 0.1
+
+# Build must be pointed at the template; deploy must NOT (it has to use
+# .aws-sam/build/template.yaml, where CodeUri was rewritten to the build
+# output — otherwise it would zip the whole crate, target/ included).
+[default.build.parameters]
+parallel = true
+template_file = "benchmark-stack.yaml"
+
+[default.deploy.parameters]
+stack_name = "konductor-publish-benchmark"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false
+resolve_s3 = true

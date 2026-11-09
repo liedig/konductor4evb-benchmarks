@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Publish-path benchmark harness for Konductor for Amazon EventBridge
+  (GitHub issue #6 follow-up). Deploys a single in-region Lambda driver
+  that paces publishes through the platform API, probes the native
+  EventBridge floor, collects platform metrics and arrivals, and reports
+  reconciliation. Deploys into the same account as konductor-core-stack;
+  the Makefile resolves the core stack's values as parameter overrides.
+
+Parameters:
+  BenchDomain:
+    Type: String
+    Description: >-
+      Pre-existing, ACTIVE domain to benchmark (no default: the operator
+      picks deliberately). The bus {Organization}-{Environment}-{BenchDomain}-event-bus
+      must already be provisioned.
+    AllowedPattern: '[a-z][a-z0-9-]*'
+  Organization:
+    Type: String
+    Description: Organization name from the core stack (bus/table namespace prefix).
+  Environment:
+    Type: String
+    Description: Environment name from the core stack (e.g. dev).
+  CoreApiEndpoint:
+    Type: String
+    Description: >-
+      IAM API base URL (core stack output IamApiEndpoint), e.g.
+      https://{id}.execute-api.{region}.amazonaws.com/dev
+  CoreApiId:
+    Type: String
+    Description: API Gateway REST API id of the core IAM API (for execute-api:Invoke scoping).
+  CoreApiStage:
+    Type: String
+    Default: dev
+    Description: Core IAM API stage the benchmark signs against.
+  BindingsTableName:
+    Type: String
+    Default: konductor-authorization-bindings
+    Description: Authorization bindings table (core stack output AuthorizationBindingsTableName).
+  DomainsTableName:
+    Type: String
+    Default: konductor-domains
+    Description: >-
+      Domains table the ACTIVE check reads directly (the describe endpoint
+      requires an owner binding; the harness seeds only a publisher).
+  PublishDlqName:
+    Type: String
+    Default: konductor-publish-dlq
+    Description: Publish DLQ name from the core stack.
+
+Resources:
+  BenchmarkLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: /aws/lambda/konductor-publish-benchmark
+      RetentionInDays: 30
+
+  BenchmarkFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: BenchmarkLogGroup
+    Metadata:
+      BuildMethod: rust-cargolambda
+    Properties:
+      FunctionName: konductor-publish-benchmark
+      CodeUri: ./
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      # 200 concurrent SigV4 publishes need the CPU headroom.
+      MemorySize: 1024
+      # 30s warmup + 420s measured + floor probe + 120s settle + collection.
+      Timeout: 900
+      # One run at a time: concurrent runs would corrupt each other's
+      # reconciliation and double the load.
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          BENCH_DOMAIN: !Ref BenchDomain
+          BENCH_API_ENDPOINT: !Ref CoreApiEndpoint
+          BENCH_BINDINGS_TABLE: !Ref BindingsTableName
+          BENCH_DOMAINS_TABLE: !Ref DomainsTableName
+          BENCH_ACCOUNT_ID: !Ref AWS::AccountId
+          BENCH_ORG: !Ref Organization
+          BENCH_ENV: !Ref Environment
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: FunctionLogging
+              Effect: Allow
+              Action: [logs:CreateLogStream, logs:PutLogEvents]
+              Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/konductor-publish-benchmark:*"
+            - Sid: InvokePlatformApi
+              Effect: Allow
+              Action: execute-api:Invoke
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApiId}/${CoreApiStage}/*/*"
+            - Sid: BindingFixture
+              Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:DeleteItem]
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${BindingsTableName}"
+            - Sid: DomainStatusRead
+              Effect: Allow
+              Action: [dynamodb:GetItem]
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DomainsTableName}"
+            - Sid: ArrivalRule
+              Effect: Allow
+              Action: [events:PutRule, events:PutTargets, events:RemoveTargets, events:DeleteRule]
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${Organization}-${Environment}-${BenchDomain}-event-bus/konductor-benchmark-*"
+            - Sid: FloorProbe
+              Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/konductor-benchmark-floor"
+            - Sid: FloorBus
+              Effect: Allow
+              Action: [events:CreateEventBus, events:DeleteEventBus]
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/konductor-benchmark-floor"
+            - Sid: StageMetrics
+              Effect: Allow
+              # CloudWatch metrics do not support resource scoping.
+              Action: cloudwatch:GetMetricStatistics
+              Resource: "*"
+            - Sid: ArrivalLogGroup
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:DeleteLogGroup
+              Resource:
+                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/events/konductor-benchmark-arrival"
+                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/events/konductor-benchmark-arrival:*"
+            # Resource policies are account-level: these actions reject any
+            # resource ARN narrower than "*".
+            - Sid: ArrivalResourcePolicy
+              Effect: Allow
+              Action: [logs:PutResourcePolicy, logs:DeleteResourcePolicy]
+              Resource: "*"
+            - Sid: ArrivalQuery
+              Effect: Allow
+              Action: [logs:StartQuery, logs:GetQueryResults, logs:StopQuery]
+              Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/events/konductor-benchmark-arrival:*"
+            - Sid: PublishDlq
+              Effect: Allow
+              Action: [sqs:GetQueueUrl, sqs:GetQueueAttributes]
+              Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${PublishDlqName}"
+
+Outputs:
+  BenchmarkFunctionName:
+    Description: Benchmark driver function name
+    Value: !Ref BenchmarkFunction

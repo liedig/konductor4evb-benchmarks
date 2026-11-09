@@ -1,0 +1,7 @@
+/target
+.aws-sam
+Cargo.lock
+
+__pycache__/
+
+.DS_Store
