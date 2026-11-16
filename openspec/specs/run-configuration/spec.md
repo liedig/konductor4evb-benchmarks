@@ -1,7 +1,7 @@
 # run-configuration Specification
 
 ## Purpose
-TBD - created by archiving change validate-abort-min-samples. Update Purpose after archive.
+Resolving and validating benchmark run configuration from stack-provided environment variables and Lambda payload overrides, so an invalid run fails fast at invocation instead of wasting setup and a load window.
 
 ## Requirements
 
